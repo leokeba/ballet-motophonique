@@ -5,9 +5,9 @@
 // step generator), in turns per minute of what it turns, through the
 // driver's ramp. One number says everything: a speed other than 0 enables
 // the driver, waits at standstill, then turns; 0 ramps down to a stop and
-// disables it. The velocity is renewed every tick, so the driver's deadman
-// never stops a turning motor and a master writing the speed needn't renew
-// it. The motor claims its driver: the driver tree's controls are readouts.
+// holds there, the driver enabled at its hold current (Leo, 2026-11-12). The
+// velocity is renewed every tick, so the driver's deadman never stops a
+// turning motor and a master writing the speed needn't renew it. The motor claims its driver: the driver tree's controls are readouts.
 //
 // Added to Motion before its driver, so the velocity it sets reaches the
 // chip in the same tick. Built on Fluante's spinner (fluante-firmware).
@@ -22,11 +22,12 @@ namespace motophonique {
 class Motor : public tessermotion::Part {
 public:
     enum class State : uint8_t {
-        Stopped,   // speed 0, or never asked
+        Stopped,   // never asked to turn since boot or a halt: the driver off
         Absent,    // asked to turn, the driver doesn't answer
         Settling,  // enabled, at standstill before turning
         Running,   // turning, ramping to the speed
-        Stopping,  // ramping down to 0, then disabled
+        Stopping,  // ramping down to 0, then holding
+        Holding,   // speed 0: at standstill, the driver enabled (its hold current)
         Halted,    // the driver was disabled underneath (Motion::stopAll(),
                    // a reset of the chip): waits for a speed to be written
     };
@@ -57,7 +58,8 @@ public:
     Settings settings;
 
     // From any task: these take Motion's lock.
-    // The speed asked, rpm, signed: 0 stops. Writing it leaves a halt.
+    // The speed asked, rpm, signed: 0 stops and holds. Writing it leaves a
+    // halt.
     void setSpeed(float rpm);
     float speed();
     State state();

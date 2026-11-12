@@ -50,8 +50,8 @@ TEST(tree_stop_all_stops_every_motor) {
     CHECK_EQ(r.get("/motors/1/speed").body, "0");
     CHECK_EQ(r.get("/motors/2/speed").body, "0");
     r.run(1);
-    CHECK(r.motor[0].state() == motophonique::Motor::State::Stopped);
-    CHECK(r.motor[1].state() == motophonique::Motor::State::Stopped);
+    CHECK(r.motor[0].state() == motophonique::Motor::State::Holding);
+    CHECK(r.motor[1].state() == motophonique::Motor::State::Holding);
 }
 
 TEST(tree_persists_settings_not_the_speed) {

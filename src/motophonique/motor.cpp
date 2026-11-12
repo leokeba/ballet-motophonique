@@ -51,8 +51,9 @@ void Motor::update(uint64_t nowUs) {
         booted_ = true;
         tessermotion::TmcFound found = driver_.status().found;
         if (found == tessermotion::TmcFound::Turning && driver_.enabled()) {
-            // Adopted at the speed it turned at: down to a stop on the ramp
-            // (a motor boots at speed 0), unless a speed was written first.
+            // Adopted at the speed it turned at: down to a stop on the ramp,
+            // then held (a motor boots at speed 0), unless a speed was
+            // written first.
             state_ = turn ? State::Running : State::Stopping;
         } else if (found == tessermotion::TmcFound::Coasting) {
             coastUntilUs_ = nowUs + static_cast<uint64_t>(settings.coastMs) * 1000;
@@ -82,8 +83,7 @@ void Motor::update(uint64_t nowUs) {
                 return;
             }
             if (!turn) {
-                driver_.enable(false);
-                state_ = State::Stopped;
+                state_ = State::Holding;  // enabled: 0 holds
                 return;
             }
             if (nowUs - sinceUs_ >= static_cast<uint64_t>(settings.settleMs) * 1000) {
@@ -93,6 +93,7 @@ void Motor::update(uint64_t nowUs) {
             return;
         case State::Running:
         case State::Stopping:
+        case State::Holding:
             if (!driver_.enabled()) {
                 state_ = State::Halted;
                 return;
@@ -103,12 +104,10 @@ void Motor::update(uint64_t nowUs) {
                 driver_.setVelocity(microstepsPerSecond(to));
                 return;
             }
+            if (state_ == State::Holding) return;
             state_ = State::Stopping;
-            driver_.hold();  // ramps down
-            if (driver_.actualVelocity() == 0) {
-                driver_.enable(false);
-                state_ = State::Stopped;
-            }
+            driver_.hold();  // ramps down, then stays enabled at standstill
+            if (driver_.actualVelocity() == 0) state_ = State::Holding;
             return;
     }
 }

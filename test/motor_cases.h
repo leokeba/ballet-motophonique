@@ -1,6 +1,6 @@
 // The motor (docs/DESIGN.md section 5.1) on TesserMotion's fake TMC2209: the
 // units, booting stopped, the start, the driver's ramp, the deadman, speed
-// changes through 0, stopping, the limit, halts, an absent driver, a chip
+// changes through 0, stopping and holding, the limit, halts, an absent driver, a chip
 // found turning or coasting at boot.
 #pragma once
 
@@ -86,7 +86,7 @@ TEST(motor_reverses_through_zero_on_a_ramp) {
     CHECK(r.vactual() < 0);
 }
 
-TEST(motor_stops_on_a_ramp_at_zero) {
+TEST(motor_stops_on_a_ramp_and_holds_at_zero) {
     Rig r;
     r.motor[0].settings.acceleration = 60;
     r.motor[0].setSpeed(60);
@@ -98,10 +98,40 @@ TEST(motor_stops_on_a_ramp_at_zero) {
     r.run(0.5f);
     CHECK(near(r.motor[0].rpm(), 30, 1.5));
     r.run(0.6f);
-    CHECK(r.motor[0].state() == State::Stopped);
-    CHECK(!r.driver[0].enabled());
+    CHECK(r.motor[0].state() == State::Holding);
+    CHECK(r.driver[0].enabled());  // held at the hold current, not free
+    CHECK(r.written(r22::toff) != 0u);
     CHECK_EQ(r.motor[0].rpm(), 0.0f);
-    CHECK_EQ(r.written(r22::toff), 0u);  // the power stage off: the motor turns freely
+    CHECK_EQ(r.vactual(), 0.0f);
+    r.run(5);  // past the deadman: still holding
+    CHECK(r.motor[0].state() == State::Holding);
+    CHECK(r.driver[0].enabled());
+}
+
+TEST(motor_turns_from_holding_without_settling) {
+    Rig r;
+    r.motor[0].settings.acceleration = 0;
+    r.motor[0].setSpeed(30);
+    r.run(1);
+    r.motor[0].setSpeed(0);
+    r.run(0.1f);
+    CHECK(r.motor[0].state() == State::Holding);
+    r.motor[0].setSpeed(-30);
+    r.tick();
+    CHECK(r.motor[0].state() == State::Running);
+    CHECK(near(r.motor[0].rpm(), -30, 0.01));
+}
+
+TEST(motor_holds_when_zero_comes_while_settling) {
+    Rig r;
+    r.motor[0].setSpeed(30);
+    r.tick();
+    CHECK(r.motor[0].state() == State::Settling);
+    r.motor[0].setSpeed(0);
+    r.tick();
+    CHECK(r.motor[0].state() == State::Holding);
+    CHECK(r.driver[0].enabled());
+    CHECK_EQ(r.vactual(), 0.0f);
 }
 
 TEST(motor_turns_again_while_stopping) {
@@ -128,8 +158,8 @@ TEST(motor_turns_at_its_limit) {
     CHECK(near(r.motor[0].rpm(), -50, 0.01));
     r.motor[0].settings.limit = 0;  // nothing turns
     r.run(1.1f);
-    CHECK(r.motor[0].state() == State::Stopped);
-    CHECK(!r.driver[0].enabled());
+    CHECK(r.motor[0].state() == State::Holding);
+    CHECK_EQ(r.vactual(), 0.0f);
 }
 
 TEST(motor_halts_on_stop_all_and_keeps_its_speed) {
@@ -231,8 +261,8 @@ TEST(motor_ramps_a_chip_found_turning_down_to_a_stop) {
     CHECK(r.driver[0].enabled());                  // not braked at once
     CHECK(r.motor[0].rpm() > 100);
     r.run(2.2f);  // 120 rpm at 60 rpm/s
-    CHECK(r.motor[0].state() == State::Stopped);
-    CHECK(!r.driver[0].enabled());
+    CHECK(r.motor[0].state() == State::Holding);
+    CHECK(r.driver[0].enabled());
 }
 
 TEST(motor_goes_on_from_a_chip_found_turning_when_asked_first) {

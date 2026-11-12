@@ -5,12 +5,12 @@ Firmware for Ballet Motophonique's motor controller: stepper motors turned at a 
 It is an application of four libraries:
 
 - [TesserKIT](https://github.com/leokeba/TesserKIT): Wi-Fi with a captive portal, OTA updates from this repository's releases, files, users, and the API over UDP and ESP-NOW, under `/sys`.
-- [TesserMotion](https://github.com/leokeba/TesserMotion): the TMC2209 drivers and the control loop.
+- [TesserMotion](https://github.com/leokeba/TesserMotion): the stepper drivers (TMC5160s, driven by step and direction) and the control loop.
 - [TesserAPI](https://github.com/leokeba/TesserAPI) and [TesserUI](https://github.com/leokeba/TesserUI): the device's tree, reachable over HTTP, WebSocket, USB serial and UDP, drawn in the browser without UI code.
 
-This repository holds only the motors: `/motors/1` to `/motors/n`, each with `speed` (rpm, signed: 0 stops; never stored, so every motor boots stopped), `rpm` (the speed now), `state`, `acceleration` and `limit`.
+This repository holds only the motors: `/motors/1` to `/motors/n`, each with `speed` (rpm, signed: 0 stops and holds; never stored, so every motor boots stopped, its driver off), `rpm` (the speed now), `state`, `acceleration` and `limit`.
 
-> **Status:** the motor, its tree and host tests; the firmware builds, but its board isn't known yet and it has never run on one. The specification is [docs/DESIGN.md](docs/DESIGN.md).
+> **Status:** the motor, its tree and host tests; the boards are classic ESP32 devkits with TMC5160s driven by step and direction, whose step generator TesserMotion doesn't have yet, so the firmware builds on a placeholder board and has never run on one. The specification is [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Building
 
@@ -30,11 +30,11 @@ On the master, name this controller in an ensemble slot (`/ensemble/1/device`, i
 {"cc": 74, "slot": 1, "path": "/motors/1/speed", "min": -60, "max": 60, "centred": true, "deadband": 2}
 ```
 
-64 stops the motor, 0 turns it at −60 rpm, 127 at +60. The speed holds until the next value: no `renew` is needed.
+64 stops and holds the motor, 0 turns it at −60 rpm, 127 at +60. The speed holds until the next value: no `renew` is needed.
 
 ## Controlling the motors
 
 ```sh
 curl -X PUT http://<ip>/api/motors/1/speed -d 30      # 30 rpm, ramped
-curl -X PUT http://<ip>/api/motors/stop -d null       # every motor to 0
+curl -X PUT http://<ip>/api/motors/stop -d null       # every motor to 0, holding
 ```

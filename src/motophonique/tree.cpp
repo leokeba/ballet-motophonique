@@ -30,17 +30,18 @@ void describe(Object& o, Motor& m) {
         .step(0.1)
         .unit("rpm")
         .watch()
-        .doc("Turns per minute, negative the other way, 0 stops. Not stored: the motor boots stopped. Faster "
-             "than the limit turns at the limit");
+        .doc("Turns per minute, negative the other way, 0 stops and holds. Not stored: the motor boots "
+             "stopped, its driver off. Faster than the limit turns at the limit");
     o.value("rpm", [&m] { return m.rpm(); })
         .unit("rpm")
         .ui("precision", 1)
         .watch()
         .doc("The speed now, as ramped. Approximate: the driver's clock isn't calibrated");
-    o.value("state", [&m] { return m.state(); }, {"stopped", "absent", "settling", "running", "stopping", "halted"})
+    o.value("state", [&m] { return m.state(); }, {"stopped", "absent", "settling", "running", "stopping", "holding", "halted"})
         .watch()
-        .doc("absent: the driver doesn't answer. halted: the driver was disabled underneath; write a speed again. "
-             "stopped with a speed: waiting for the motor to coast down at boot");
+        .doc("stopped: the driver off, as at boot. holding: at speed 0, the driver on at its hold current. absent: "
+             "the driver doesn't answer. halted: the driver was disabled underneath; write a speed again. stopped "
+             "with a speed: waiting for the motor to coast down at boot");
     setting(o, "acceleration", m, s.acceleration)
         .range(0, 6000)
         .step(1)
@@ -87,7 +88,7 @@ void describe(Object& o, Motors& motors) {
          o.changed();
      })
         .label("Stop all")
-        .doc("Every speed to 0: each motor ramps down and lets go")
+        .doc("Every speed to 0: each motor ramps down and holds")
         .ui("style", "danger")
         .ui("icon", "power");
     for (int i = 0; i < motors.count && i < Motors::kMax; i++) {

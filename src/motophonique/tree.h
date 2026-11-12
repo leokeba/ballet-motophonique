@@ -16,7 +16,7 @@ struct Motors {
     Motor* items;
     int count;
 
-    // Every speed to 0: each motor ramps down and lets go.
+    // Every speed to 0: each motor ramps down and holds.
     void stopAll();
 };
 

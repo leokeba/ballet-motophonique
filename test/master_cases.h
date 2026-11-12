@@ -89,8 +89,8 @@ TEST(master_streams_a_speed_that_needs_no_renewal) {
     // The knob back to the middle.
     CHECK(r.stream("/motors/1/speed", "0") == tesser::Status::Ok);
     r.node.run(1);
-    CHECK(r.node.motor[0].state() == motophonique::Motor::State::Stopped);
-    CHECK(!r.node.driver[0].enabled());
+    CHECK(r.node.motor[0].state() == motophonique::Motor::State::Holding);
+    CHECK(r.node.driver[0].enabled());
 }
 
 TEST(master_cant_reach_a_motors_mechanics) {
@@ -116,7 +116,7 @@ TEST(master_lost_stops_the_motors_it_turned) {
     r.node.tick();
     CHECK(r.node.motor[0].state() == motophonique::Motor::State::Stopping);  // on its ramp
     r.node.run(1);
-    CHECK(r.node.motor[0].state() == motophonique::Motor::State::Stopped);
+    CHECK(r.node.motor[0].state() == motophonique::Motor::State::Holding);
     CHECK(r.node.motor[1].state() == motophonique::Motor::State::Running);
 }
 

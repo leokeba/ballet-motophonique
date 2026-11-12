@@ -1,10 +1,11 @@
 #pragma once
 
-// The motor controller's board (docs/DESIGN.md section 3): NOT KNOWN YET.
-// Until Leo's boards are, these are Fluante's control board's pins (a
+// The motor controller's board (docs/DESIGN.md section 3): A PLACEHOLDER.
+// Leo's boards are classic ESP32 devkits with TMC5160s driven through STEP
+// and DIR, whose step generator TesserMotion doesn't have yet; their pins
+// aren't known. Until both are, these are Fluante's control board's pins (a
 // classic ESP32 with one TMC2209 on its single-wire UART), so the firmware
-// builds; don't flash it onto a board with a motor before this file
-// describes that board.
+// builds; don't flash it onto a board with a motor.
 
 namespace board {
 
