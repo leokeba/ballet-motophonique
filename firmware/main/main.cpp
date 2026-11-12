@@ -65,6 +65,11 @@ extern "C" void app_main() {
     espNow.enable(false).maxCalls(10);
     udp.maxCalls(10).ownTask(true);
     peers.order("udp/ethernet, nowtp");
+    // A master gone from every transport, or restarted: the motors whose
+    // speed it wrote last stop on their ramps (docs/DESIGN.md section 5.3).
+    peers.onDeviceLost([](const tesser::PeerAddress& device, tesser::PeerLoss reason) {
+        dev.api().writerLost(device, reason);
+    });
     // Updates from this repository's releases (.github/workflows/release.yml),
     // and from any URL.
     firmware.github("leokeba/ballet-motophonique", "ballet-motophonique-{target}.bin");

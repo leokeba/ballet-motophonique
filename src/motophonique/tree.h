@@ -25,7 +25,9 @@ void describe(tesser::Object& o, Motors& motors);
 
 // The device's sections, in menu order, with their labels, icons and menu
 // groups: /motors, then each motor's driver (/drivers/n) and the control
-// loop's statistics (/motion) under "Hardware". Before Device::begin().
+// loop's statistics (/motion) under "Hardware"; each speed's writer
+// tracked, so a lost master's motors stop (docs/DESIGN.md section 5.3:
+// call api.writerLost() when a device is lost). Before Device::begin().
 void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion);
 
 }  // namespace motophonique

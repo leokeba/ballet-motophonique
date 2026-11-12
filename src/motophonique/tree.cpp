@@ -96,7 +96,21 @@ void describe(Object& o, Motors& motors) {
 }
 
 void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion) {
-    api.mount("motors", motors).label("Motors").ui("icon", "motor");
+    auto& tree = api.mount("motors", motors).label("Motors").ui("icon", "motor");
+    // A speed's writer is remembered (TesserAPI's trackWriter()): when that
+    // device is lost (api.writerLost(), from TesserKIT's peers.onDeviceLost())
+    // the motor stops on its ramp. A speed written without a device (this
+    // controller's page, its serial API) has no writer to lose.
+    for (int i = 0; i < motors.count && i < Motors::kMax; i++) {
+        auto* motor = static_cast<Object*>(tree.child(kNames[i]));
+        tesser::Node* speed = motor ? motor->child("speed") : nullptr;
+        if (!speed) continue;
+        Motor& m = motors.items[i];
+        api.trackWriter(*speed, [&m](tesser::Node& node, tesser::PeerLoss) {
+            m.setSpeed(0);
+            node.changed();
+        });
+    }
     auto& drivers = api.object("drivers").label("Motor drivers").ui("icon", "motor").ui("group", "Hardware");
     for (int i = 0; i < motors.count && i < Motors::kMax; i++) {
         tessermotion::describe(drivers.object(kNames[i]).label(kLabels[i]), motors.items[i].driver());

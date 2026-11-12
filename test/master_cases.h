@@ -1,7 +1,8 @@
-// A master playing the motors (docs/DESIGN.md section 5.2): Ballet
+// A master playing the motors (docs/DESIGN.md sections 5.2 and 5.3): Ballet
 // Photophonique's controller mappings stream the speed through TesserAPI's
 // RemoteNode::stream(), here from a bare master over an in-memory link, at
-// the access TesserKIT's UdpApi gives peers (User).
+// the access TesserKIT's UdpApi gives peers (User); and a lost master's
+// motors stopping.
 #pragma once
 
 #include <deque>
@@ -45,6 +46,9 @@ struct MasterRig {
         : masterLink(&master, tesser::TransportKind::NowTP, sender(masterMac), [this] { return clock; }),
           nodeLink(&node.api, tesser::TransportKind::NowTP, sender(nodeMac), [this] { return clock; }) {
         nodeLink.setPeerAccess(tesser::Access::User);  // as TesserKIT's UdpApi has it
+        // As the firmware wires TesserKIT's peers.onDeviceLost().
+        nodeLink.onPeerLost([this](const tesser::PeerAddress&, const tesser::PeerAddress& device,
+                                   tesser::PeerLoss reason) { node.api.writerLost(device, reason); });
         masterLink.mountPeers(master.object("peers"));
         masterLink.peerSeen(nodeMac, "motors-left", node.api.schemaHash());
         deliver();
@@ -96,4 +100,37 @@ TEST(master_cant_reach_a_motors_mechanics) {
     CHECK(r.stream("/motors/1/mechanics/ratio", "2") == tesser::Status::Ok);  // queued
     CHECK(failed == tesser::Status::Unauthorized);
     CHECK_EQ(r.node.motor[0].settings.ratio, 1.0f);
+}
+
+TEST(master_lost_stops_the_motors_it_turned) {
+    MasterRig r;
+    CHECK(r.stream("/motors/1/speed", "30") == tesser::Status::Ok);
+    CHECK(r.node.set("/motors/2/speed", "-20").status == tesser::Status::Ok);  // the node's own page
+    r.node.run(2);
+    CHECK(r.node.motor[0].state() == motophonique::Motor::State::Running);
+    CHECK(r.node.motor[1].state() == motophonique::Motor::State::Running);
+    r.nodeLink.forgetPeer(r.masterMac);  // gone: a restart, silence, a goodbye
+    r.deliver();
+    CHECK_EQ(r.node.get("/motors/1/speed").body, "0");
+    CHECK_EQ(r.node.motor[1].speed(), -20.0f);  // not the master's
+    r.node.tick();
+    CHECK(r.node.motor[0].state() == motophonique::Motor::State::Stopping);  // on its ramp
+    r.node.run(1);
+    CHECK(r.node.motor[0].state() == motophonique::Motor::State::Stopped);
+    CHECK(r.node.motor[1].state() == motophonique::Motor::State::Running);
+}
+
+TEST(master_lost_leaves_a_speed_written_after_it) {
+    MasterRig r;
+    CHECK(r.stream("/motors/1/speed", "30") == tesser::Status::Ok);
+    CHECK(r.node.set("/motors/1/speed", "15").status == tesser::Status::Ok);  // taken over locally
+    // The master writing a motor's acceleration doesn't make its speed the
+    // master's.
+    CHECK(r.node.set("/motors/2/speed", "10").status == tesser::Status::Ok);
+    CHECK(r.stream("/motors/2/acceleration", "120") == tesser::Status::Ok);
+    CHECK_EQ(r.node.motor[1].settings.acceleration, 120.0f);
+    r.nodeLink.forgetPeer(r.masterMac);
+    r.deliver();
+    CHECK_EQ(r.node.motor[0].speed(), 15.0f);
+    CHECK_EQ(r.node.motor[1].speed(), 10.0f);
 }
