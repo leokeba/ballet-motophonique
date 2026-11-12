@@ -1,0 +1,39 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <meta name="description" content="Reach a Ballet Motophonique motor controller over USB or the network, or install its firmware on a board: TesserUI's launcher." />
+    <title>Ballet Motophonique</title>
+    <link rel="icon" href="data:," />
+  </head>
+  <body>
+    <!-- TesserUI's bundle, published by .github/workflows/release.yml with the
+         firmware it serves, and built into the bridge's executables. A
+         launcher: it opens ?api=, or the controller the user picks (TesserUI's
+         DESIGN.md section 9.7). It installs the latest releases over USB,
+         which the workflow copies next to it, then sets up the controller's
+         Wi-Fi (section 9.7.1). -->
+    <script>
+      window.TESSER = {
+        launcher: true,
+        title: 'Ballet Motophonique',
+        firmware: {
+          images: [
+            {
+              label: 'Ballet Motophonique',
+              asset: 'ballet-motophonique-{target}-factory.bin',
+              description:
+                'The motor controller: stepper motors on TMC2209 drivers. Installing resets the settings; every motor boots stopped.',
+            },
+          ],
+          wifi: '/sys/network/wifi',
+        },
+        // Nearby links to the bridge's executables on this repository's
+        // latest release (release.yml's bridge job).
+        bridge: { repo: 'leokeba/ballet-motophonique', name: 'ballet-motophonique-bridge' },
+      };
+    </script>
+    <script src="ui.js"></script>
+  </body>
+</html>
