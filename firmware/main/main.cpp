@@ -65,6 +65,10 @@ extern "C" void app_main() {
     espNow.enable(false).maxCalls(10);
     udp.maxCalls(10).ownTask(true);
     peers.order("udp/ethernet, nowtp");
+    // The show's discovery group, as photophonique's: its master mounts only
+    // the peers sharing one (docs/DESIGN.md section 5.1). The factory default
+    // of /sys/peers/group (Admin, persisted); empty mounts every node.
+    peers.group("ballet");
     // A master gone from every transport, or restarted: the motors whose
     // speed it wrote last stop on their ramps (docs/DESIGN.md section 5.3).
     peers.onDeviceLost([](const tesser::PeerAddress& device, tesser::PeerLoss reason) {
