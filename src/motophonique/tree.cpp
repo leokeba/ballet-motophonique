@@ -96,7 +96,7 @@ void describe(Object& o, Motors& motors) {
     }
 }
 
-void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion) {
+void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion, const DriveTree& describeDrive) {
     auto& tree = api.mount("motors", motors).label("Motors").ui("icon", "motor");
     // A speed's writer is remembered (TesserAPI's trackWriter()): when that
     // device is lost (api.writerLost(), from TesserKIT's peers.onDeviceLost())
@@ -114,7 +114,7 @@ void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion) {
     }
     auto& drivers = api.object("drivers").label("Motor drivers").ui("icon", "motor").ui("group", "Hardware");
     for (int i = 0; i < motors.count && i < Motors::kMax; i++) {
-        tessermotion::describe(drivers.object(kNames[i]).label(kLabels[i]), motors.items[i].driver());
+        describeDrive(drivers.object(kNames[i]).label(kLabels[i]), i);
     }
     api.mount("motion", motion).label("Control loop").ui("icon", "chart").ui("group", "Hardware");
 }

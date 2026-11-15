@@ -34,7 +34,8 @@ struct Rig {
     fake::Tmc2209 chip[2];
     tessermotion::Tmc2209 driver[2] = {tessermotion::Tmc2209{uart[0], config(0), &gpio},
                                        tessermotion::Tmc2209{uart[1], config(1), &gpio}};
-    motophonique::Motor motor[2] = {motophonique::Motor{driver[0], "motor 1"}, motophonique::Motor{driver[1], "motor 2"}};
+    motophonique::Motor motor[2] = {motophonique::Motor{driver[0], &driver[0], "motor 1"},
+                                    motophonique::Motor{driver[1], &driver[1], "motor 2"}};
     motophonique::Motors motors{motor, 2};
     tessermotion::Motion motion;
     tesser::Api api;
@@ -56,7 +57,9 @@ struct Rig {
         }
         for (auto& m : motor) motion.add(m);  // before the drivers: a velocity reaches the chip in the same tick
         for (auto& d : driver) motion.add(d);
-        motophonique::mountTree(api, motors, motion);
+        motophonique::mountTree(api, motors, motion, [this](tesser::Object& o, int i) {
+            tessermotion::describe(o, driver[i]);
+        });
         motion.begin();
         run(idle);
     }

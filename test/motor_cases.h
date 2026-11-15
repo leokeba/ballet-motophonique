@@ -290,3 +290,21 @@ TEST(motor_waits_for_a_chip_found_coasting) {
     CHECK(r.motor[0].state() == State::Settling);
     CHECK(r.driver[0].enabled());
 }
+
+TEST(motor_without_a_chip_waits_the_coast_time_at_boot) {
+    // A step and direction drive: no found state, so a reset can't tell a
+    // coasting rotor from a still one. The motor waits coastMs before it
+    // enables, as for a chip found coasting.
+    Rig r;
+    motophonique::Motor sd(r.driver[0], nullptr, "step and direction");
+    sd.settings.coastMs = 4000;
+    sd.setSpeed(30);
+    sd.update(1000000);  // the first update: boot
+    CHECK(sd.state() == State::Stopped);
+    CHECK(!r.driver[0].enabled());
+    sd.update(1000000 + 3900000);
+    CHECK(sd.state() == State::Stopped);
+    sd.update(1000000 + 4100000);
+    CHECK(sd.state() == State::Settling);
+    CHECK(r.driver[0].enabled());
+}

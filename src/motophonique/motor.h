@@ -1,9 +1,9 @@
 #pragma once
 
 // A stepper motor turned at a signed speed (docs/DESIGN.md section 5.1): a
-// TesserMotion part driving a TMC2209 at a velocity (VACTUAL, the chip's own
-// step generator), in turns per minute of what it turns, through the
-// driver's ramp. One number says everything: a speed other than 0 enables
+// TesserMotion part driving a MotionDrive at a velocity (a TMC2209's VACTUAL,
+// or a step and direction generator's pulses for a TMC5160), in turns per
+// minute of what it turns, through the drive's ramp. One number says everything: a speed other than 0 enables
 // the driver, waits at standstill, then turns; 0 ramps down to a stop and
 // holds there, the driver enabled at its hold current (Leo, 2026-11-12). The
 // velocity is renewed every tick, so the driver's deadman never stops a
@@ -46,13 +46,17 @@ public:
         // automatic tuning wants 130 ms at least.
         uint32_t settleMs = 300;
         // At boot, after a driver found coasting (its power stage was off
-        // through the ESP32's reset while the motor turned): the wait before
-        // enabling it.
+        // through the ESP32's reset while the motor turned), or after any
+        // reset of a step and direction drive, which can't tell a coasting
+        // rotor from a still one (Leo, 2026-11-15): the wait before enabling.
         uint32_t coastMs = 10000;
     };
 
-    // `owner` names the motor in the driver's claim ("driven by <owner>").
-    explicit Motor(tessermotion::Tmc2209& driver, const char* owner = "motor") : driver_(driver), owner_(owner) {}
+    // `owner` names the motor in the drive's claim ("driven by <owner>").
+    // `chip`: the TMC2209 behind `drive`, to adopt a chip found turning at
+    // boot; null for a step and direction drive, which has no found state.
+    Motor(tessermotion::MotionDrive& drive, tessermotion::TmcDriver* chip, const char* owner = "motor")
+        : drive_(drive), chip_(chip), owner_(owner) {}
 
     // Under lock() once added to Motion (the tree does).
     Settings settings;
@@ -72,8 +76,6 @@ public:
     // The speed turned at: the speed asked, within ±limit. Under the lock.
     float target() const;
 
-    tessermotion::Tmc2209& driver() { return driver_; }
-
     // Part
     void begin() override;
     void update(uint64_t nowUs) override;
@@ -82,12 +84,13 @@ public:
     void stop() override;
 
 private:
-    tessermotion::Tmc2209& driver_;
+    tessermotion::MotionDrive& drive_;
+    tessermotion::TmcDriver* chip_;
     const char* owner_;
     float speed_ = 0;  // never stored: a motor boots stopped
     State state_ = State::Stopped;
     uint64_t sinceUs_ = 0;  // entered Settling
-    bool booted_ = false;   // the first update, which sees what the driver found
+    bool booted_ = false;   // the first update, which sees what the chip found
     uint64_t coastUntilUs_ = 0;
 };
 

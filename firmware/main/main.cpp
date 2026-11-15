@@ -47,7 +47,7 @@ UartPort tmcUart({.rx = board::kTmcRx, .tx = board::kTmcTx, .baud = 115200, .por
 Tmc2209 drivers[board::kMotors] = {Tmc2209(tmcUart, {.address = 0, .enable = board::kTmcEnable})};  // 0.11 Ω
 Motion motion;
 
-motophonique::Motor motor[board::kMotors] = {motophonique::Motor(drivers[0], "motor 1")};
+motophonique::Motor motor[board::kMotors] = {motophonique::Motor(drivers[0], &drivers[0], "motor 1")};
 motophonique::Motors motors{motor, board::kMotors};
 
 }  // namespace
@@ -98,7 +98,9 @@ extern "C" void app_main() {
     for (auto& d : drivers) motion.add(d);
 
     auto& api = dev.api();
-    motophonique::mountTree(api, motors, motion);
+    motophonique::mountTree(api, motors, motion, [](tesser::Object& o, int i) {
+        tessermotion::describe(o, drivers[i]);
+    });
     static tesserui::Views views(api);
     motophonique::addViews(views, motors);
 
