@@ -66,9 +66,13 @@ extern "C" void app_main() {
     udp.maxCalls(10).ownTask(true);
     peers.order("udp/ethernet, nowtp");
     // The show's discovery group, as photophonique's: its master mounts only
-    // the peers sharing one (docs/DESIGN.md section 5.1). The factory default
+    // the peers sharing one (docs/DESIGN.md section 5.2). The factory default
     // of /sys/peers/group (Admin, persisted); empty mounts every node.
     peers.group("ballet");
+    // Over UDP a lost master's route waits for its 5 s probe before its
+    // writes go again: a motor isn't stopped by a short loss of its master
+    // (as photophonique's, which sets the same).
+    peers.grace(6000);
     // A master gone from every transport, or restarted: the motors whose
     // speed it wrote last stop on their ramps (docs/DESIGN.md section 5.3).
     peers.onDeviceLost([](const tesser::PeerAddress& device, tesser::PeerLoss reason) {
