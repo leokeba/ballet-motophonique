@@ -18,6 +18,18 @@ const char* const kLabels[Motors::kMax] = {"Motor 1", "Motor 2", "Motor 3", "Mot
 
 }  // namespace
 
+void describe(Object& o, MoveRequest& request) {
+    o.value("degrees", request.degrees).range(-3600, 3600).unit("°").doc("Relative output rotation");
+    o.value("maxSpeed", request.maxSpeed).range(0.1, Motor::kMaxRpm).unit("rpm");
+    o.value("acceleration", request.acceleration).range(0.1, 6000).unit("rpm/s");
+}
+
+void describe(Object& o, PingPongRequest& request) {
+    o.value("span", request.span).range(0.1, 3600).unit("°").doc("Total endpoint-to-endpoint distance");
+    o.value("maxSpeed", request.maxSpeed).range(0.1, Motor::kMaxRpm).unit("rpm");
+    o.value("acceleration", request.acceleration).range(0.1, 6000).unit("rpm/s");
+}
+
 void Motors::stopAll() {
     for (int i = 0; i < count; i++) items[i].setSpeed(0);
 }
@@ -37,11 +49,38 @@ void describe(Object& o, Motor& m) {
         .ui("precision", 1)
         .watch()
         .doc("The speed now, as ramped. Approximate: the driver's clock isn't calibrated");
-    o.value("state", [&m] { return m.state(); }, {"stopped", "absent", "settling", "running", "stopping", "holding", "halted"})
+    o.value("state", [&m] { return m.state(); },
+            {"stopped", "absent", "settling", "running", "stopping", "holding", "moving", "pingPong", "halted"})
         .watch()
         .doc("stopped: the driver off, as at boot. holding: at speed 0, the driver on at its hold current. absent: "
-             "the driver doesn't answer. halted: the driver was disabled underneath; write a speed again. stopped "
+             "the driver doesn't answer. moving: a finite relative move. pingPong: moving between endpoints until "
+             "stopped. halted: the driver was disabled underneath; write a speed again. stopped "
              "with a speed: waiting for the motor to coast down at boot");
+    o.value("position", [&m] { return m.position(); })
+        .unit("°")
+        .watch()
+        .doc("Open-loop commanded output position, relative to boot; valid only if positionValid is true");
+    o.value("positionValid", [&m] { return m.positionValid(); })
+        .watch()
+        .doc("False if untracked continuous motion or an interruption made the commanded position uncertain");
+    o.action("move", [&m](const MoveRequest& request) -> tesser::Check {
+         if (m.moveDegrees(request.degrees, request.maxSpeed, request.acceleration)) return tesser::Check::ok();
+         return tesser::Check::fail(
+             tesser::Status::NotAllowed,
+             "move refused: requires an idle step/dir motor, valid position, and supported settings");
+     })
+        .label("Move")
+        .writeAccess(Access::User)
+        .doc("Move by a relative number of degrees at maxSpeed, with the given acceleration");
+    o.action("pingPong", [&m](const PingPongRequest& request) -> tesser::Check {
+         if (m.pingPong(request.span, request.maxSpeed, request.acceleration)) return tesser::Check::ok();
+         return tesser::Check::fail(
+             tesser::Status::NotAllowed,
+             "ping-pong refused: requires an idle step/dir motor, valid position, and supported settings");
+     })
+        .label("Ping-pong")
+        .writeAccess(Access::User)
+        .doc("Start at the current position and alternate across span degrees until stopped");
     setting(o, "acceleration", m, s.acceleration)
         .range(0, 6000)
         .step(1)
@@ -110,6 +149,10 @@ void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion, c
         tesser::Node* speed = motor->child("speed");
         if (!speed) continue;
         Motor& m = motors.items[i];
+        m.onProgramWritten([&api, speed, motor] {
+            api.wrote(*speed);
+            motor->changed();
+        });
         api.trackWriter(*speed, [&m](tesser::Node& node, tesser::PeerLoss) {
             m.setSpeed(0);
             node.changed();

@@ -9,6 +9,65 @@
 using motophonique::Motor;
 using State = motophonique::Motor::State;
 
+namespace {
+
+struct StepDirMotorRig {
+    fake::Gpio gpio;
+    fake::Spi bus;
+    fake::Tmc5160 chip;
+    tessermotion::Tmc5160 driver{bus, tessermotion::Tmc5160Config{5, -1}, &gpio};
+    fake::PulseOutput output;
+    tessermotion::StepDirGroup group{22, &gpio};
+    tessermotion::StepDirMotor stepper{output, driver, group, tessermotion::StepDirConfig{12, 13}, &gpio};
+    Motor motor{stepper, &driver, "motor", &stepper};
+    motophonique::Motors motors{&motor, 1};
+    tessermotion::Motion motion;
+    tesser::Api api;
+    uint64_t now = 1000000;
+
+    StepDirMotorRig() {
+        chip.stepDir = true;
+        chip.attach(bus, 5);
+        driver.settings.microsteps = 256;
+        CHECK(group.add(stepper));
+        motion.add(group);
+        motion.add(driver);
+        motion.add(motor);
+        motion.add(stepper);
+        motophonique::mountTree(api, motors, motion,
+                                [this](tesser::Object& o, int) { tessermotion::describe(o, driver); },
+                                [this](tesser::Object& o, int) { tessermotion::describe(o, stepper); });
+        motor.settings.coastMs = 0;
+        motor.settings.settleMs = 0;
+        fake::now = now;
+        motion.begin();
+    }
+
+    void tick(int count = 1) {
+        for (int i = 0; i < count; ++i) {
+            now += 20000;
+            fake::now = now;
+            motion.step(now);
+        }
+    }
+
+    tesser::Status call(const char* path, const char* body) {
+        JsonDocument doc;
+        deserializeJson(doc, body);
+        tesser::Request request;
+        request.op = tesser::Op::Set;
+        request.path = path;
+        request.body = doc.as<JsonVariantConst>();
+        request.client.authenticated = true;
+        request.client.access = tesser::Access::User;
+        tesser::StringReply reply;
+        api.handle(request, reply);
+        return reply.status;
+    }
+};
+
+}  // namespace
+
 TEST(motor_units) {
     Rig r;
     // 60 rpm of the shaft: 1 turn/s, 200 steps of 256 microsteps.
@@ -18,6 +77,72 @@ TEST(motor_units) {
     r.motor[0].settings.ratio = 1.0f / 3;
     r.driver[0].setMicrosteps(16);
     CHECK(near(r.motor[0].microstepsPerSecond(60), 9600, 0.01));
+}
+
+TEST(motor_degrees_convert_to_signed_microsteps) {
+    Rig r;
+    int32_t steps = 0;
+    CHECK(r.motor[0].microstepsForDegrees(90, steps));
+    CHECK_EQ(steps, 12800);
+    CHECK(r.motor[0].microstepsForDegrees(-90, steps));
+    CHECK_EQ(steps, -12800);
+
+    r.motor[0].settings.ratio = 0.5f;
+    r.driver[0].setMicrosteps(16);
+    CHECK(r.motor[0].microstepsForDegrees(90, steps));
+    CHECK_EQ(steps, 1600);
+}
+
+TEST(motor_degrees_reject_invalid_or_unrepresentable_commands) {
+    Rig r;
+    int32_t steps = 17;
+    CHECK(!r.motor[0].microstepsForDegrees(NAN, steps));
+    CHECK(!r.motor[0].microstepsForDegrees(1e30f, steps));
+    CHECK_EQ(steps, 17);
+}
+
+TEST(motor_tree_runs_relative_degree_moves) {
+    StepDirMotorRig r;
+    CHECK(r.motor.positionValid());
+    CHECK(r.call("/motors/1/move", "{\"degrees\":90,\"maxSpeed\":30,\"acceleration\":60}") ==
+          tesser::Status::Ok);
+    r.tick(3);
+    CHECK(r.output.running());
+    CHECK_EQ(r.output.pump(20000), 12800u);
+    r.tick(2);
+    CHECK(r.motor.state() == State::Holding);
+    CHECK(r.motor.positionValid());
+    CHECK(near(r.motor.position(), 90, 0.001));
+
+    CHECK(r.call("/motors/1/move", "{\"degrees\":-45,\"maxSpeed\":30,\"acceleration\":60}") ==
+          tesser::Status::Ok);
+    r.tick(2);
+    CHECK(r.output.running());
+    CHECK_EQ(r.output.pump(20000), 6400u);
+    r.tick(2);
+    CHECK(near(r.motor.position(), 45, 0.001));
+}
+
+TEST(motor_tree_ping_pongs_across_span_and_stop_cancels_cleanly) {
+    StepDirMotorRig r;
+    CHECK(r.call("/motors/1/pingPong", "{\"span\":90,\"maxSpeed\":30,\"acceleration\":60}") ==
+          tesser::Status::Ok);
+    r.tick(3);
+    CHECK(r.output.running());
+    CHECK_EQ(r.output.pump(20000), 12800u);
+    r.tick(3);
+    CHECK(near(r.motor.position(), 90, 0.001));
+    CHECK(r.motor.state() == State::PingPong);
+    CHECK(r.output.running());
+    CHECK(r.output.pump(10) > 0);
+
+    CHECK(r.call("/motors/stop", "null") == tesser::Status::Ok);
+    CHECK_EQ(r.output.pump(20000) > 0, true);
+    r.tick(2);
+    CHECK(r.motor.state() == State::Holding);
+    CHECK(r.motor.positionValid());
+    CHECK(r.motor.position() < 90);
+    CHECK(r.motor.position() > 0);
 }
 
 TEST(motor_boots_stopped_and_claims_its_driver) {

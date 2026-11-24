@@ -54,7 +54,8 @@ StepDirMotor stepDirMotors[board::kMotors] = {
     StepDirMotor(pulse, drivers[0], stepDirGroup, {.step = board::kTmcStep, .dir = board::kTmcDir})};
 Motion motion;
 
-motophonique::Motor motor[board::kMotors] = {motophonique::Motor(stepDirMotors[0], &drivers[0], "motor 1")};
+motophonique::Motor motor[board::kMotors] = {
+    motophonique::Motor(stepDirMotors[0], &drivers[0], "motor 1", &stepDirMotors[0])};
 motophonique::Motors motors{motor, board::kMotors};
 
 }  // namespace

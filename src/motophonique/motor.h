@@ -14,7 +14,11 @@
 
 #include <stdint.h>
 
+#include <functional>
+#include <utility>
+
 #include "tessermotion/motion.h"
+#include "tessermotion/step_dir.h"
 #include "tessermotion/tmc2209.h"
 
 namespace motophonique {
@@ -28,6 +32,8 @@ public:
         Running,   // turning, ramping to the speed
         Stopping,  // ramping down to 0, then holding
         Holding,   // speed 0: at standstill, the driver enabled (its hold current)
+        Moving,    // completing a finite relative move
+        PingPong,  // moving between two points until stopped
         Halted,    // the driver was disabled underneath (Motion::stopAll(),
                    // a reset of the chip): waits for a speed to be written
     };
@@ -55,8 +61,9 @@ public:
     // `owner` names the motor in the drive's claim ("driven by <owner>").
     // `chip`: the TMC2209 behind `drive`, to adopt a chip found turning at
     // boot; null for a step and direction drive, which has no found state.
-    Motor(tessermotion::MotionDrive& drive, tessermotion::TmcDriver* chip, const char* owner = "motor")
-        : drive_(drive), chip_(chip), owner_(owner) {}
+    Motor(tessermotion::MotionDrive& drive, tessermotion::TmcDriver* chip, const char* owner = "motor",
+          tessermotion::StepDirMotor* stepper = nullptr)
+        : drive_(drive), chip_(chip), stepper_(stepper), owner_(owner) {}
 
     // Under lock() once added to Motion (the tree does).
     Settings settings;
@@ -65,6 +72,13 @@ public:
     // The speed asked, rpm, signed: 0 stops and holds. Writing it leaves a
     // halt.
     void setSpeed(float rpm);
+    // Starts a relative degree move, or ping-pongs across a total span, at
+    // the given output speed and acceleration.
+    bool moveDegrees(float degrees, float maxRpm, float accelerationRpmPerSecond);
+    bool pingPong(float spanDegrees, float maxRpm, float accelerationRpmPerSecond);
+    void onProgramWritten(std::function<void()> callback);
+    float position();
+    bool positionValid();
     float speed();
     State state();
     float rpm();  // the speed now, as the driver ramps it
@@ -73,6 +87,9 @@ public:
     // effect (also rpm/s to µsteps/s²): the driver keeps the speed through
     // a change. Under the lock.
     float microstepsPerSecond(float rpm) const;
+    // Converts an output rotation into signed µsteps at the current
+    // resolution, rejecting non-finite and out-of-range commands.
+    bool microstepsForDegrees(float degrees, int32_t& microsteps) const;
     // The speed turned at: the speed asked, within ±limit. Under the lock.
     float target() const;
 
@@ -84,14 +101,26 @@ public:
     void stop() override;
 
 private:
+    enum class Program : uint8_t { None, Move, PingPong };
+    bool startProgramSegment();
+    bool startProgram(float degrees, float maxRpm, float accelerationRpmPerSecond, Program program);
+
     tessermotion::MotionDrive& drive_;
     tessermotion::TmcDriver* chip_;
+    tessermotion::StepDirMotor* stepper_;
     const char* owner_;
     float speed_ = 0;  // never stored: a motor boots stopped
     State state_ = State::Stopped;
     uint64_t sinceUs_ = 0;  // entered Settling
     bool booted_ = false;   // the first update, which sees what the chip found
     uint64_t coastUntilUs_ = 0;
+    Program program_ = Program::None;
+    float programDegrees_ = 0;
+    float programMaxRpm_ = 0;
+    float programAccelerationRpmPerSecond_ = 0;
+    int programDirection_ = 1;
+    bool segmentStarted_ = false;
+    std::function<void()> programWritten_;
 };
 
 }  // namespace motophonique

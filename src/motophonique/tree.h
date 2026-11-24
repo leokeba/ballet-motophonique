@@ -22,6 +22,20 @@ struct Motors {
     void stopAll();
 };
 
+struct MoveRequest {
+    float degrees = 90;
+    float maxSpeed = 30;
+    float acceleration = 60;
+};
+
+struct PingPongRequest {
+    float span = 180;
+    float maxSpeed = 30;
+    float acceleration = 60;
+};
+
+void describe(tesser::Object& o, MoveRequest& request);
+void describe(tesser::Object& o, PingPongRequest& request);
 void describe(tesser::Object& o, Motor& motor);
 void describe(tesser::Object& o, Motors& motors);
 
