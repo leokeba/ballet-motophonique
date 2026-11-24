@@ -76,6 +76,7 @@ public:
     // the given output speed and acceleration.
     bool moveDegrees(float degrees, float maxRpm, float accelerationRpmPerSecond);
     bool pingPong(float spanDegrees, float maxRpm, float accelerationRpmPerSecond);
+    bool zeroPosition();
     void onProgramWritten(std::function<void()> callback);
     float position();
     bool positionValid();

@@ -26,6 +26,14 @@ bool Motor::pingPong(float spanDegrees, float maxRpm, float accelerationRpmPerSe
     return startProgram(spanDegrees, maxRpm, accelerationRpmPerSecond, Program::PingPong);
 }
 
+bool Motor::zeroPosition() {
+    Guard g(lock());
+    if (!stepper_ || program_ != Program::None || speed_ != 0 || state_ != State::Holding || !drive_.enabled()) {
+        return false;
+    }
+    return stepper_->zeroCommandedPosition();
+}
+
 void Motor::onProgramWritten(std::function<void()> callback) {
     Guard g(lock());
     programWritten_ = std::move(callback);

@@ -51,7 +51,7 @@ struct StepDirMotorRig {
         }
     }
 
-    tesser::Status call(const char* path, const char* body) {
+    tesser::Status call(const char* path, const char* body, tesser::Access access = tesser::Access::User) {
         JsonDocument doc;
         deserializeJson(doc, body);
         tesser::Request request;
@@ -59,7 +59,7 @@ struct StepDirMotorRig {
         request.path = path;
         request.body = doc.as<JsonVariantConst>();
         request.client.authenticated = true;
-        request.client.access = tesser::Access::User;
+        request.client.access = access;
         tesser::StringReply reply;
         api.handle(request, reply);
         return reply.status;
@@ -174,6 +174,29 @@ TEST(motor_lowering_speed_limit_cancels_ping_pong_safely) {
     CHECK(r.motor.positionValid());
     CHECK(r.motor.position() > 0);
     CHECK(r.motor.position() < 90);
+}
+
+TEST(motor_rezero_requires_admin_and_a_held_motor) {
+    StepDirMotorRig r;
+    CHECK(r.call("/motors/1/zeroPosition", "null") != tesser::Status::Ok);
+    CHECK(r.call("/motors/1/zeroPosition", "null", tesser::Access::Admin) != tesser::Status::Ok);
+
+    r.motor.setSpeed(5);
+    r.tick(5);
+    CHECK(r.motor.state() == State::Running);
+    CHECK(!r.motor.positionValid());
+    CHECK(r.call("/motors/1/zeroPosition", "null", tesser::Access::Admin) != tesser::Status::Ok);
+
+    r.motor.setSpeed(0);
+    for (int i = 0; i < 10 && r.motor.state() != State::Holding; ++i) {
+        r.output.pump(20000);
+        r.tick();
+    }
+    CHECK(r.motor.state() == State::Holding);
+    CHECK(!r.motor.positionValid());
+    CHECK(r.call("/motors/1/zeroPosition", "null", tesser::Access::Admin) == tesser::Status::Ok);
+    CHECK(r.motor.positionValid());
+    CHECK(near(r.motor.position(), 0, 0.001));
 }
 
 TEST(motor_boots_stopped_and_claims_its_driver) {

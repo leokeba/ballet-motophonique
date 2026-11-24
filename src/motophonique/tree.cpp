@@ -81,6 +81,18 @@ void describe(Object& o, Motor& m) {
         .label("Ping-pong")
         .writeAccess(Access::User)
         .doc("Start at the current position and alternate across span degrees until stopped");
+    o.action("zeroPosition", [&m, &o] {
+         if (!m.zeroPosition()) {
+             return tesser::Check::fail(
+                 tesser::Status::NotAllowed,
+                 "re-zero refused: requires an idle step/dir motor held at zero speed");
+         }
+         o.changed();
+         return tesser::Check::ok();
+     })
+        .label("Re-zero position")
+        .writeAccess(Access::Admin)
+        .doc("Declare the current held position to be 0°; does not move or home the motor");
     setting(o, "acceleration", m, s.acceleration)
         .range(0, 6000)
         .step(1)

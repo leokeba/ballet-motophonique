@@ -74,6 +74,7 @@ There is no platform code here (TesserMotion and TesserKIT have it); any would g
 - **The driver's ramp** follows `acceleration` (rpm/s, stored, 60 by default; 0 jumps), written to the driver in µsteps/s² every tick. The driver's velocity is `rpm / 60 / ratio · stepsPerTurn · microsteps` µsteps/s, at the microsteps in effect, so a change of microsteps keeps the speed (TesserMotion 3fc5cf5); `rpm` reads the driver's ramped velocity back. Approximate: the TMC2209's clock isn't calibrated (±5 % or so).
 - **Relative move** (`/motors/n/move`): an action with `degrees`, `maxSpeed` (rpm) and `acceleration` (rpm/s). Degrees are output rotation; the controller converts them to the driver's current microstep resolution and asks TesserMotion for an exact finite move with the same acceleration and deceleration. `maxSpeed` is capped by the motor's stored `limit`; lowering that limit during a move cancels it with a controlled deceleration. The driver reports a commanded position in canonical 1/256-full-step units, so changing microsteps between moves preserves position. It is an open-loop count from boot, not a sensor reading; continuous speed mode or an interruption that loses the pulse count marks it invalid, and later degree moves are refused.
 - **Ping-pong** (`/motors/n/pingPong`): `span` is the full endpoint-to-endpoint distance in output degrees. It starts at the current position, moves by that span, then alternates between endpoints at the requested max speed and acceleration until `/motors/stop` or a speed write cancels it. Cancellation decelerates and drains queued pulses; a master loss cancels it through the tracked speed node. It needs a valid open-loop position and step/direction output.
+- **Re-zero** (`/motors/n/zeroPosition`, Admin): while the step/direction motor is held at zero speed, this action declares its current physical position to be 0°. It does not move or home the motor; the operator must first place it at the intended reference. This restores position validity after an untracked move, but cannot verify that the physical reference is correct.
 - **The claim:** each motor claims its driver at begin, so `/drivers/n/enabled`, `velocity` and `stop` are readouts, refused with `busy`.
 - **Step and direction drives** (TesserMotion e4e12d6, its §4.9): no found state, so a reset of such a drive is treated as coasting: the motor waits `start/coast` (10 s, Leo's choice, 2026-11-15) before a speed may enable it, and never adopts a rotor. `/motors/n/pulseOutputReady` reports RMT setup success and `/motors/n/pulseStartFailures` counts rejected pulse starts; RMT setup, transmit and stop errors are also logged.
 - **Halts:** the driver disabled underneath (Motion's `stopAll()` during an update, the chip reset by a power loss, code) halts the motor; the speed keeps what was asked. Writing a speed, any speed, leaves the halt. No resume (Leo, 2026-11-12): a master's mapping writes only when its value changes, so after a halt the motor waits for the knob to move.
@@ -99,7 +100,7 @@ Photophonique's DESIGN §5.8 plans how the ensemble plays in time (NowTP's netwo
 
 ## 6. The tree
 
-Persisted nodes are marked *(p)*. Writes to `/motors` need `User`; TesserKIT's Auth leaves everyone Admin until an admin account exists. UDP peers are `User` (§5.2).
+Persisted nodes are marked *(p)*. Writes to `/motors` need `User`, except `zeroPosition`, which needs `Admin`; TesserKIT's Auth leaves everyone Admin until an admin account exists. UDP peers are `User` (§5.2).
 
 ```
 /motors                 label "Motors", ui.icon motor
@@ -111,6 +112,7 @@ Persisted nodes are marked *(p)*. Writes to `/motors` need `User`; TesserKIT's A
     positionValid       whether the open-loop position is still trustworthy; read-only, watched
     move                action: relative degrees, maxSpeed rpm, acceleration rpm/s
     pingPong            action: full endpoint span in degrees, maxSpeed rpm, acceleration rpm/s
+    zeroPosition        Admin action: assign the held shaft's current position to 0°
     state               stopped | absent | settling | running | stopping | holding | moving | pingPong | halted, watched
     acceleration (p)    0–6000 rpm/s (60)
     limit (p)           0–1000 rpm (120)
