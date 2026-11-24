@@ -123,6 +123,20 @@ TEST(motor_tree_runs_relative_degree_moves) {
     CHECK(near(r.motor.position(), 45, 0.001));
 }
 
+TEST(motor_relative_moves_obey_the_saved_speed_limit) {
+    StepDirMotorRig r;
+    r.motor.settings.limit = 10;
+    CHECK(r.call("/motors/1/move", "{\"degrees\":90,\"maxSpeed\":30,\"acceleration\":60}") ==
+          tesser::Status::Ok);
+    r.tick(3);
+    CHECK_EQ(r.output.pump(20000), 12800u);
+    uint32_t shortestPeriod = UINT32_MAX;
+    for (uint32_t period : r.output.periods) {
+        if (period < shortestPeriod) shortestPeriod = period;
+    }
+    CHECK(shortestPeriod >= 1172u);  // 10 rpm at 256 microsteps, not the requested 30
+}
+
 TEST(motor_tree_ping_pongs_across_span_and_stop_cancels_cleanly) {
     StepDirMotorRig r;
     CHECK(r.call("/motors/1/pingPong", "{\"span\":90,\"maxSpeed\":30,\"acceleration\":60}") ==
@@ -143,6 +157,23 @@ TEST(motor_tree_ping_pongs_across_span_and_stop_cancels_cleanly) {
     CHECK(r.motor.positionValid());
     CHECK(r.motor.position() < 90);
     CHECK(r.motor.position() > 0);
+}
+
+TEST(motor_lowering_speed_limit_cancels_ping_pong_safely) {
+    StepDirMotorRig r;
+    CHECK(r.call("/motors/1/pingPong", "{\"span\":90,\"maxSpeed\":30,\"acceleration\":60}") ==
+          tesser::Status::Ok);
+    r.tick(3);
+    CHECK(r.output.running());
+    CHECK(r.output.pump(10) > 0);
+    r.motor.settings.limit = 10;
+    r.tick();
+    CHECK(r.output.pump(20000) > 0);
+    r.tick(2);
+    CHECK(r.motor.state() == State::Holding);
+    CHECK(r.motor.positionValid());
+    CHECK(r.motor.position() > 0);
+    CHECK(r.motor.position() < 90);
 }
 
 TEST(motor_boots_stopped_and_claims_its_driver) {

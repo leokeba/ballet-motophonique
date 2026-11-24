@@ -37,6 +37,9 @@ bool Motor::startProgram(float degrees, float maxRpm, float accelerationRpmPerSe
         speed_ != 0 || !stepper_->commandedPositionValid()) {
         return false;
     }
+    float limit = fabsf(settings.limit);
+    if (!isfinite(limit) || limit <= 0) return false;
+    if (maxRpm > limit) maxRpm = limit;
 
     int32_t steps = 0;
     if (!microstepsForDegrees(degrees, steps)) return false;
@@ -61,10 +64,15 @@ bool Motor::startProgram(float degrees, float maxRpm, float accelerationRpmPerSe
 }
 
 bool Motor::startProgramSegment() {
+    if (!stepper_) return false;
+    float motorLimit = fabsf(settings.limit);
+    if (!isfinite(motorLimit) || motorLimit <= 0) return false;
+    if (programMaxRpm_ > motorLimit) programMaxRpm_ = motorLimit;
+
     int32_t steps = 0;
     float maxSpeed = microstepsPerSecond(programMaxRpm_);
     float acceleration = microstepsPerSecond(programAccelerationRpmPerSecond_);
-    if (!stepper_ || !isfinite(maxSpeed) || !isfinite(acceleration)) return false;
+    if (!isfinite(maxSpeed) || !isfinite(acceleration)) return false;
     float speedLimit = stepper_->settings.maxSpeed;
     if (!isfinite(speedLimit) || speedLimit <= 0 || maxSpeed <= 0 || maxSpeed > speedLimit || acceleration <= 0 ||
         acceleration > 4000000.0f ||
@@ -141,6 +149,22 @@ float Motor::target() const {
 void Motor::begin() { drive_.claim(owner_); }
 
 void Motor::update(uint64_t nowUs) {
+    if (program_ != Program::None && stepper_) {
+        float limit = fabsf(settings.limit);
+        if (!isfinite(limit) || limit <= 0) {
+            if (segmentStarted_) stepper_->hold();
+            program_ = Program::None;
+            segmentStarted_ = false;
+        } else if (programMaxRpm_ > limit) {
+            if (segmentStarted_) {
+                stepper_->hold();
+                program_ = Program::None;
+                segmentStarted_ = false;
+            } else {
+                programMaxRpm_ = limit;
+            }
+        }
+    }
     // The driver's ramp follows the motor's acceleration, in its units.
     drive_.ramp.acceleration = fabsf(microstepsPerSecond(settings.acceleration));
     float to = target();
