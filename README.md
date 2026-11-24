@@ -10,7 +10,7 @@ It is an application of four libraries:
 
 This repository holds only the motors: `/motors/1` to `/motors/n`, each with `speed` (rpm, signed: 0 stops and holds; never stored, so every motor boots stopped, its driver off), `rpm` (the speed now), `state`, `acceleration` and `limit`.
 
-> **Status:** the motor, its tree and host tests; the boards are classic ESP32 devkits with TMC5160s driven by step and direction, whose step generator TesserMotion doesn't have yet, so the firmware builds on a placeholder board and has never run on one. The specification is [docs/DESIGN.md](docs/DESIGN.md).
+> **Status:** the motor, its tree and host tests; the firmware is configured for the connected classic ESP32 devkit and TMC5160 step/direction wiring. This configuration has not yet been validated on the motor. Check the driver's reported current against the motor and driver module before commanding motion. The specification is [docs/DESIGN.md](docs/DESIGN.md).
 
 ## Building
 
@@ -33,6 +33,8 @@ On the master, name this controller in an ensemble slot (`/ensemble/1/device`, i
 64 stops and holds the motor, 0 turns it at −60 rpm, 127 at +60. The speed holds until the next value: no `renew` is needed.
 
 ## Controlling the motors
+
+On the Motors page, the slider sets the requested speed in rpm (negative reverses; 0 stops and holds). “Now” is the ramped speed, not the request; `absent` means the driver did not respond. “Stop all” sets every motor to 0.
 
 ```sh
 curl -X PUT http://<ip>/api/motors/1/speed -d 30      # 30 rpm, ramped

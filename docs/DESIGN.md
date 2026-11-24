@@ -1,6 +1,6 @@
 # Ballet Motophonique design
 
-Status: phase 0 (2026-11-12): the motor (a signed speed, ramped, the driver's deadman handled inside, 0 holding), the `/motors` tree, the first page, host-tested on TesserMotion's fake TMC2209 (27 cases). A lost master's motors stop (§5.3, on TesserAPI 5a991e4). The boards are known since 2026-11-12 (§3: classic ESP32 devkits, TMC5160s driven by step and direction), but their step generator isn't built (TesserMotion, §9), so the firmware still builds on a placeholder board (ESP-IDF 6.1 in CI's image, 1.64 MB, 11 % of the 1.75 MB slot free) and has never run on one. Nothing is pushed: the GitHub repository doesn't exist yet (§8). This is the specification the code follows; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not built yet.
+Status: phase 0 (2026-11-12): the motor (a signed speed, ramped, the driver's deadman handled inside, 0 holding), the `/motors` tree, the first page, host-tested on TesserMotion's fake TMC2209 (27 cases). A lost master's motors stop (§5.3, on TesserAPI 5a991e4). TesserMotion's step/dir generator is integrated; `board.h` now describes the connected classic ESP32 devkit and one TMC5160 (§3). A 2026-11-19 board test before TesserMotion ba87f6e accepted speed but left StepDir velocity and measured RPM at 0; post-fix motion verification is pending. Nothing is pushed: the GitHub repository doesn't exist yet (§8). This is the specification the code follows; when the two disagree, fix one of them. Sections marked *(later)* are committed to but not built yet.
 
 Ballet Motophonique's controller turns stepper motors at speeds that Ballet Photophonique's master plays from a MIDI keyboard and its recorder. It is an application of [TesserKIT](https://github.com/leokeba/TesserKIT) and [TesserMotion](https://github.com/leokeba/TesserMotion) on [TesserAPI](https://github.com/leokeba/TesserAPI) and [TesserUI](https://github.com/leokeba/TesserUI), built like [tiny-heliostat](https://github.com/leokeba/tiny-heliostat) and, for the motor, like [Fluante](https://github.com/leokeba/fluante-firmware)'s spinner.
 
@@ -34,25 +34,25 @@ Ballet Motophonique's controller turns stepper motors at speeds that Ballet Phot
 
 ## 3. Hardware
 
-Leo, 2026-11-12: **classic ESP32 devkits** (4 MB, no Ethernet: Wi-Fi), and **TMC5160 drivers driven through their STEP pin**: on these modules the driver's own motion controller (its velocity ramp, which TesserMotion's `Tmc5160` drives over SPI) isn't usable, so the ESP32 makes the steps and DIR the direction. TesserMotion's `Tmc5160` already handles a chip strapped for step and direction (SD_MODE high, read in `IOIN`): configured and read over SPI, its velocity refused. The step generator itself is on TesserMotion's roadmap (its §13), not built: it is asked of TesserMotion's agent, not written here (§9).
+Leo, 2026-11-12: **classic ESP32 devkits** (4 MB, no Ethernet: Wi-Fi), and **TMC5160 drivers driven through their STEP pin**: on these modules the driver's own motion controller (its velocity ramp, which TesserMotion's `Tmc5160` drives over SPI) isn't usable, so the ESP32 makes the steps and DIR the direction. TesserMotion's `Tmc5160` handles a chip strapped for step and direction (SD_MODE high, read in `IOIN`): configured and read over SPI, its velocity refused. Its RMT step generator and pulse-output diagnostics are integrated from TesserMotion ba87f6e. A pre-fix hardware test accepted speed but StepDir velocity stayed at 0; TesserMotion fixed a same-tick deadman timestamp underflow in ba87f6e. Post-fix hardware motion verification is pending.
 
-Pins (Leo, 2026-11-15): SPI SCK D18, MOSI D23, MISO D19; CS1 D5, CS2 RX2; STEP1 D21, DIR1 TX2; STEP2 D4, DIR2 D15; EN D22, shared by both drivers. Two motors per devkit, 200 full steps, no gearing. Not known yet (§12): whether SPI is wired to the modules (then currents, microsteps, stealthChop and the status come over SPI; without it the module's own pins and potentiometer set them), the pins, the motors per devkit, the motors and their supply.
+Pins (Leo, 2026-11-15; confirmed 2026-11-19): SPI SCK GPIO18, MOSI GPIO23, MISO GPIO19; CS1 GPIO5; STEP1 GPIO21, DIR1 GPIO17 (TX2); shared EN GPIO22. A second driver could use CS2 GPIO16 (RX2), STEP2 GPIO4, DIR2 GPIO15; only one driver is currently installed. SPI is wired. The motor is reported as 3.0 A; verify the driver's sense resistor and the motor's current rating before increasing the driver's factory 0.5 A run current. The motor is 200 full steps, with no gearing.
 
-Until then `firmware/main/board.h` holds Fluante's control board's pins (one TMC2209 on UART 2: RX 26, TX 25, EN 13, address 0) and the motor turns a TMC2209 through VACTUAL, so the firmware builds and the behaviour is host-tested; **it is not to be flashed onto a board with a motor**. On the step generator, `Motor` moves onto its velocity interface (the same calls: enable, a velocity with a deadman, a ramp, hold, the velocity now), and the TMC2209 goes.
+`firmware/main/board.h` describes the connected board's GPIOs. The app pairs each TMC5160 with a TesserMotion `StepDirMotor`; its pulse readiness and rejected start count are also exposed on that motor's tree.
 
 ## 4. Architecture
 
 Only what is specific to the motors is here; the rest comes from the libraries, pinned in `deps.lock`:
 
 - **TesserKIT**: `Device`, `System` (`/sys/name`), `Network` (Wi-Fi, the access point, mDNS), `Firmware` (uploads, GitHub releases, rollback), `Files` (LittleFS: the settings), `Auth`, `UdpApi` (the API over UDP: the master's way here), `NowTp` (ESP-NOW, off by default: testing, and time later), `Peers` (`/sys/peers`, and when a device is lost), `Log`; TesserAPI's serial transport on the console's UART (the launcher's USB way).
-- **TesserMotion**: `Motion` (the control task, 50 Hz); today `Tmc2209` on a `UartPort` (the placeholder, §3); on the boards `Tmc5160` on an `SpiBus` (if wired) and TesserMotion's step generator *(later, §9)*.
+- **TesserMotion**: `Motion` (the control task, 50 Hz); on the board `Tmc5160` on an `SpiBus` plus `StepDirMotor` on RMT, with the TMC5160 strapped for STEP/DIR.
 - **TesserUI**: the interface, and `Views` for the first page.
 
 ### 4.1 Pieces of this repository
 
 | Piece | Does | Uses |
 |---|---|---|
-| `Motor` | a TesserMotion `Part`: a signed speed, the start, the ramp, stopping and holding, halts; the speed in rpm (§5.1) | `MotionDrive` (TesserMotion 1d7c972: a TMC2209 or a step and direction motor, §3), and the chip behind it for adoption (null for step and direction) |
+| `Motor` | a TesserMotion `Part`: a signed speed, the start, the ramp, stopping and holding, halts; the speed in rpm (§5.1) | `MotionDrive` (TesserMotion e4e12d6: a TMC2209 or a step and direction motor, §3), and the chip behind it for adoption (null for step and direction) |
 | `Motors` | the board's motors, Stop all | `Motor` |
 | `tree.cpp`, `views.cpp` | the `/motors` and `/drivers` trees, the sections' order and labels, the first page | TesserAPI, TesserMotion's driver trees, TesserUI |
 
@@ -72,7 +72,7 @@ There is no platform code here (TesserMotion and TesserKIT have it); any would g
 - **Limit** (`limit`, stored, 120 rpm by default; Leo, 2026-11-12: the defaults are fine): a faster speed turns at the limit, either way; the speed shows what was asked. 0 keeps the motor still (holding).
 - **The driver's ramp** follows `acceleration` (rpm/s, stored, 60 by default; 0 jumps), written to the driver in µsteps/s² every tick. The driver's velocity is `rpm / 60 / ratio · stepsPerTurn · microsteps` µsteps/s, at the microsteps in effect, so a change of microsteps keeps the speed (TesserMotion 3fc5cf5); `rpm` reads the driver's ramped velocity back. Approximate: the TMC2209's clock isn't calibrated (±5 % or so).
 - **The claim:** each motor claims its driver at begin, so `/drivers/n/enabled`, `velocity` and `stop` are readouts, refused with `busy`.
-- **Step and direction drives** (TesserMotion 1d7c972, its §4.9): no found state, so a reset of such a drive is treated as coasting: the motor waits `start/coast` (10 s, Leo's choice, 2026-11-15) before a speed may enable it, and never adopts a rotor. A manual go-ahead was the other option; Leo chose the time.
+- **Step and direction drives** (TesserMotion e4e12d6, its §4.9): no found state, so a reset of such a drive is treated as coasting: the motor waits `start/coast` (10 s, Leo's choice, 2026-11-15) before a speed may enable it, and never adopts a rotor. `/motors/n/pulseOutputReady` reports RMT setup success and `/motors/n/pulseStartFailures` counts rejected pulse starts; RMT setup, transmit and stop errors are also logged.
 - **Halts:** the driver disabled underneath (Motion's `stopAll()` during an update, the chip reset by a power loss, code) halts the motor; the speed keeps what was asked. Writing a speed, any speed, leaves the halt. No resume (Leo, 2026-11-12): a master's mapping writes only when its value changes, so after a halt the motor waits for the knob to move.
 - **Stop all** (`/motors/stop`): every speed to 0, each motor holding.
 - **At boot** every speed is 0. A reset of the ESP32 alone (its USB port, an update, a crash) leaves the TMC2209 on its supply: a chip found still turning (`/drivers/n/status/found` `turning`) is adopted at its measured speed, still enabled, and ramped down to a stop and held, unless a speed was written before the first tick; one found `coasting` (moving with its stage off, or its direction unknown) is left disabled for `start/coast` (10 s) before a speed may enable it, so a coasting rotor isn't braked (Fluante's lesson, its §10.7).
@@ -107,12 +107,13 @@ Persisted nodes are marked *(p)*. Writes to `/motors` need `User`; TesserKIT's A
     state               stopped | absent | settling | running | stopping | holding | halted, watched
     acceleration (p)    0–6000 rpm/s (60)
     limit (p)           0–1000 rpm (120)
+    pulseOutputReady    whether the step pulse output initialized, read-only
+    pulseStartFailures  number of rejected pulse starts, read-only
     mechanics/ (p)      Admin, collapsed: ratio (0.001–1000, 1), stepsPerTurn (1–1000, 200)
     start/ (p)          Admin, collapsed: settle (0–10000 ms, 300), coast (0–60000 ms, 10000)
 /drivers                label "Motor drivers", group "Hardware"
-  1 … n/                TesserMotion's driver tree (today the placeholder TMC2209's: config, chopper, pwm,
-                        ramp, status, registers, map); claimed by the motor: enabled, velocity and stop are
-                        readouts. On the boards: the TMC5160's over SPI and the step generator's (§9)
+  1 … n/                TesserMotion's driver tree: config, chopper, pwm, ramp, status, registers and map;
+                        claimed by the motor: enabled, velocity and stop are readouts
 /motion                 the control loop's statistics, group "Hardware"
 /peers                  the controllers nearby (UDP, NowTP)
 /sys                    TesserKIT
@@ -138,7 +139,7 @@ A gap goes to the lowest layer, asked of its agent; no workarounds here.
 | Streamed sets that aren't saved: `Query::persist` false carried by `RemoteNode::stream()` to the node | TesserAPI | a master's mapping onto a stored node (`acceleration`, `limit`); the speed isn't stored, so it doesn't need it (§5.2) | done, TesserAPI 8285ae6 (pinned; asked 2026-11-12 by ballet-photophonique of tesserapi-5a) |
 | What a node does when the device that wrote a value is lost, generic: photophonique's `Outputs::trackWriters()` and `release()` | TesserAPI | a lost master's motors stop (§5.3) | done, TesserAPI 5a991e4 (pinned; asked 2026-11-12 by ballet-photophonique of tesserapi-5a): `api.trackWriter(node, release)`, `api.wrote(node)`, `api.writerLost(device, reason)` from TesserKIT's `peers.onDeviceLost()` |
 | Discovery groups: a controller mounting only its project's peers, so the master's `/peers` and slots hold the show's controllers alone | TesserAPI, TesserKIT | the master finding these controllers once its own discovery has a group (§5.2) | done, TesserAPI 9073227, TesserKIT 3d8d2fc (pinned 2026-11-14, as photophonique's; before: 1334b5f, 8061847; asked 2026-11-12 by ballet-photophonique-6e of tesserapi-5a and tesserkit-80; this firmware's `peers.group("ballet")` at ballet-photophonique-74's ask, 2026-11-13) |
-| A step and direction generator for the classic ESP32 (RMT, MCPWM or LEDC: TesserMotion's choice): pulses on STEP at a signed velocity in µsteps/s, DIR set before the first pulse of each way, with the `TmcDriver` motion interface (`enable`, `setVelocity` with a deadman, `ramp.acceleration`, `hold`, `actualVelocity`, `claim`), several motors per ESP32, a pulse count for the position *(later)*; with a `Tmc5160` strapped for step and direction (SD_MODE high) configured over SPI beside it (its MRES as the microsteps), or alone with an EN pin when SPI isn't wired. Smooth at low speed (no pulse train restarted at each change), up to about 100 k pulses/s | TesserMotion (its §13) | Leo's boards (§3): every motor | sent 2026-11-15 to tessermotion-49, with Leo's go-ahead and the pins (§3); its answer: `MotionDrive` (e3e820a), `StepDirMotor` and `StepDirGroup` (ec60edd), `RmtPulseOutput` (1d7c972), all pushed, pinned at 1d7c972 (2026-11-15). Not built on the board yet |
+| A step and direction generator for the classic ESP32: pulses on STEP at a signed velocity in µsteps/s, DIR set before the first pulse of each way, with the `MotionDrive` interface and RMT output; pulse readiness, rejected starts and RMT errors are observable | TesserMotion §13, ba87f6e | Leo's boards (§3): each motor | integrated in Ballet Motophonique; post-fix hardware motion verification pending |
 
 ## 10. Testing
 

@@ -1,6 +1,6 @@
 // Ballet Motophonique (docs/DESIGN.md): stepper motors at a signed speed,
 // under /motors, played by Ballet Photophonique's master through its
-// controller mappings; TesserMotion for the TMC2209s; TesserKIT for Wi-Fi,
+// controller mappings; TesserMotion for the TMC5160 and step/dir output; TesserKIT for Wi-Fi,
 // updates from this repository's releases, files, accounts, the log and the
 // API over UDP (so the master finds it under its /peers) under /sys.
 //
@@ -10,8 +10,8 @@
 // controller boots that way: a speed is never stored. Check the motor's
 // current (/drivers/n/config/runCurrent) before writing a speed.
 //
-// The board isn't known yet (board.h): don't flash this onto a board with a
-// motor before board.h describes it.
+// The connected ESP32/TMC5160 wiring is described in board.h. The motor boots
+// stopped; check its current before requesting motion.
 //
 // For development, a gitignored main/secrets.h may define WIFI_SSID and
 // WIFI_PASSWORD, and WIFI_TX_POWER (dBm) for boards with a weak supply.
@@ -19,6 +19,9 @@
 #include "TesserKIT.h"
 #include "TesserMotion.h"
 #include "board.h"
+#include "esp_err.h"
+#include "tessermotion/platform/esp/pulse_rmt.h"
+#include "tessermotion/step_dir.h"
 
 #if __has_include("secrets.h")
 #include "secrets.h"
@@ -43,11 +46,15 @@ tesserkit::Log logs(dev);     // the firmware's log, as events and a file
 // the middle of a reply (sdkconfig.defaults).
 tesser::UartTransport serialApi(dev.api(), UART_NUM_0);
 
-UartPort tmcUart({.rx = board::kTmcRx, .tx = board::kTmcTx, .baud = 115200, .port = board::kTmcUart});
-Tmc2209 drivers[board::kMotors] = {Tmc2209(tmcUart, {.address = 0, .enable = board::kTmcEnable})};  // 0.11 Ω
+SpiBus spi({.sclk = board::kTmcSck, .mosi = board::kTmcMosi, .miso = board::kTmcMiso});
+Tmc5160 drivers[board::kMotors] = {Tmc5160(spi, {.cs = board::kTmcCs, .enable = -1})};
+RmtPulseOutput pulse;
+StepDirGroup stepDirGroup(board::kTmcEnable);
+StepDirMotor stepDirMotors[board::kMotors] = {
+    StepDirMotor(pulse, drivers[0], stepDirGroup, {.step = board::kTmcStep, .dir = board::kTmcDir})};
 Motion motion;
 
-motophonique::Motor motor[board::kMotors] = {motophonique::Motor(drivers[0], &drivers[0], "motor 1")};
+motophonique::Motor motor[board::kMotors] = {motophonique::Motor(stepDirMotors[0], &drivers[0], "motor 1")};
 motophonique::Motors motors{motor, board::kMotors};
 
 }  // namespace
@@ -82,25 +89,23 @@ extern "C" void app_main() {
     // and from any URL.
     firmware.github("leokeba/ballet-motophonique", "ballet-motophonique-{target}.bin");
 
-    // The board's pins the libraries don't drive.
-    Gpio& gpio = defaultGpio();
-    gpio.output(board::kTmcMs1, false);
-    gpio.output(board::kTmcMs2, false);
-    gpio.output(board::kTmcStep, false);
-    gpio.output(board::kTmcDir, false);
+    ESP_ERROR_CHECK(stepDirGroup.add(stepDirMotors[0]) ? ESP_OK : ESP_ERR_INVALID_STATE);
 
-    // Factory defaults, until the stored settings say otherwise: 256
-    // microsteps (the chip makes the steps: the smoothest costs nothing).
+    // The TMC5160 supplies the driver's resolution; the ESP32 generates STEP.
     for (auto& d : drivers) d.settings.microsteps = 256;
 
-    // Each motor sets its driver's velocity before the driver acts on it.
-    for (auto& m : motor) motion.add(m);
+    // The application sets the requested velocity before the step generator
+    // consumes it; the group owns the shared active-low enable line.
+    motion.add(stepDirGroup);
     for (auto& d : drivers) motion.add(d);
+    for (auto& m : motor) motion.add(m);
+    for (auto& stepper : stepDirMotors) motion.add(stepper);
 
     auto& api = dev.api();
-    motophonique::mountTree(api, motors, motion, [](tesser::Object& o, int i) {
-        tessermotion::describe(o, drivers[i]);
-    });
+    motophonique::mountTree(
+        api, motors, motion,
+        [](tesser::Object& o, int i) { tessermotion::describe(o, drivers[i]); },
+        [](tesser::Object& o, int i) { tessermotion::describe(o, stepDirMotors[i]); });
     static tesserui::Views views(api);
     motophonique::addViews(views, motors);
 

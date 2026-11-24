@@ -8,6 +8,48 @@
 
 using tesser::Status;
 
+namespace {
+
+struct StepDirTreeRig {
+    fake::Gpio gpio;
+    fake::Spi bus;
+    fake::Tmc5160 chip;
+    tessermotion::Tmc5160 driver{bus, {.cs = 5, .enable = -1}, &gpio};
+    fake::PulseOutput pulse;
+    tessermotion::StepDirGroup group{22, &gpio};
+    tessermotion::StepDirMotor stepper{pulse, driver, group, {.step = 21, .dir = 17}, &gpio};
+    motophonique::Motor motor{stepper, &driver, "motor 1"};
+    motophonique::Motors motors{&motor, 1};
+    tessermotion::Motion motion;
+    tesser::Api api;
+
+    StepDirTreeRig() {
+        chip.stepDir = true;
+        chip.attach(bus, 5);
+        group.add(stepper);
+        motion.add(group);
+        motion.add(driver);
+        motion.add(motor);
+        motion.add(stepper);
+        motophonique::mountTree(
+            api, motors, motion,
+            [this](tesser::Object& o, int) { tessermotion::describe(o, driver); },
+            [this](tesser::Object& o, int) { tessermotion::describe(o, stepper); });
+        motion.begin();
+    }
+
+    std::string get(const char* path) {
+        tesser::Request req;
+        req.op = tesser::Op::Get;
+        req.path = path;
+        tesser::StringReply reply;
+        api.handle(req, reply);
+        return reply.body;
+    }
+};
+
+}  // namespace
+
 TEST(tree_declares_cleanly) {
     Rig r;
     CHECK_EQ(tesser::declarationErrors(), 0);
@@ -17,6 +59,12 @@ TEST(tree_declares_cleanly) {
     CHECK(r.get("/drivers/1/status/present").status == Status::Ok);
     CHECK(r.get("/drivers/2/config/microsteps").status == Status::Ok);
     CHECK(r.get("/motion").status == Status::Ok);
+}
+
+TEST(step_dir_diagnostics_are_exposed_under_the_motor) {
+    StepDirTreeRig r;
+    CHECK_EQ(r.get("/motors/1/pulseOutputReady"), "true");
+    CHECK_EQ(r.get("/motors/1/pulseStartFailures"), "0");
 }
 
 TEST(tree_validates) {

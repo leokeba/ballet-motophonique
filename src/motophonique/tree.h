@@ -30,10 +30,11 @@ void describe(tesser::Object& o, Motors& motors);
 // loop's statistics (/motion) under "Hardware"; each speed's writer
 // tracked, so a lost master's motors stop (docs/DESIGN.md section 5.3:
 // call api.writerLost() when a device is lost). Before Device::begin().
-// Describes motor `index`'s drive in the tree (its driver's section,
-// /drivers/<index+1>): the caller knows what drives it (TesserMotion's
-// describe() for its chip, or its step and direction motor).
+// The drive's chip tree lives under /drivers; an optional drive tree may
+// contribute nodes to each /motors/<index+1> object.
 using DriveTree = std::function<void(tesser::Object& o, int index)>;
-void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion, const DriveTree& describeDrive);
+using MotorDriveTree = DriveTree;
+void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion, const DriveTree& describeDrive,
+               const MotorDriveTree& describeMotorDrive = {});
 
 }  // namespace motophonique
