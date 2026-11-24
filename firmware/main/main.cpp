@@ -10,8 +10,8 @@
 // controller boots that way: a speed is never stored. Check the motor's
 // current (/drivers/n/config/runCurrent) before writing a speed.
 //
-// The connected ESP32/TMC5160 wiring is described in board.h. The motor boots
-// stopped; check its current before requesting motion.
+// The ESP32/TMC5160 wiring is described in board.h. Each motor boots stopped;
+// check each driver's current before requesting motion.
 //
 // For development, a gitignored main/secrets.h may define WIFI_SSID and
 // WIFI_PASSWORD, and WIFI_TX_POWER (dBm) for boards with a weak supply.
@@ -47,15 +47,25 @@ tesserkit::Log logs(dev);     // the firmware's log, as events and a file
 tesser::UartTransport serialApi(dev.api(), UART_NUM_0);
 
 SpiBus spi({.sclk = board::kTmcSck, .mosi = board::kTmcMosi, .miso = board::kTmcMiso});
-Tmc5160 drivers[board::kMotors] = {Tmc5160(spi, {.cs = board::kTmcCs, .enable = -1})};
-RmtPulseOutput pulse;
+static_assert(board::kMotors <= board::kMaxMotors);
+Tmc5160 drivers[board::kMaxMotors] = {
+    Tmc5160(spi, {.cs = board::kMotorPins[0].cs, .enable = -1}),
+    Tmc5160(spi, {.cs = board::kMotorPins[1].cs, .enable = -1}),
+};
+RmtPulseOutput pulseOutputs[board::kMaxMotors];
 StepDirGroup stepDirGroup(board::kTmcEnable);
-StepDirMotor stepDirMotors[board::kMotors] = {
-    StepDirMotor(pulse, drivers[0], stepDirGroup, {.step = board::kTmcStep, .dir = board::kTmcDir})};
+StepDirMotor stepDirMotors[board::kMaxMotors] = {
+    StepDirMotor(pulseOutputs[0], drivers[0], stepDirGroup,
+                 {.step = board::kMotorPins[0].step, .dir = board::kMotorPins[0].dir}),
+    StepDirMotor(pulseOutputs[1], drivers[1], stepDirGroup,
+                 {.step = board::kMotorPins[1].step, .dir = board::kMotorPins[1].dir}),
+};
 Motion motion;
 
-motophonique::Motor motor[board::kMotors] = {
-    motophonique::Motor(stepDirMotors[0], &drivers[0], "motor 1", &stepDirMotors[0])};
+motophonique::Motor motor[board::kMaxMotors] = {
+    motophonique::Motor(stepDirMotors[0], &drivers[0], "motor 1", &stepDirMotors[0]),
+    motophonique::Motor(stepDirMotors[1], &drivers[1], "motor 2", &stepDirMotors[1]),
+};
 motophonique::Motors motors{motor, board::kMotors};
 
 }  // namespace
@@ -90,17 +100,19 @@ extern "C" void app_main() {
     // and from any URL.
     firmware.github("leokeba/ballet-motophonique", "ballet-motophonique-{target}.bin");
 
-    ESP_ERROR_CHECK(stepDirGroup.add(stepDirMotors[0]) ? ESP_OK : ESP_ERR_INVALID_STATE);
+    for (int i = 0; i < board::kMotors; ++i) {
+        ESP_ERROR_CHECK(stepDirGroup.add(stepDirMotors[i]) ? ESP_OK : ESP_ERR_INVALID_STATE);
+    }
 
     // The TMC5160 supplies the driver's resolution; the ESP32 generates STEP.
-    for (auto& d : drivers) d.settings.microsteps = 256;
+    for (int i = 0; i < board::kMotors; ++i) drivers[i].settings.microsteps = 256;
 
     // The application sets the requested velocity before the step generator
     // consumes it; the group owns the shared active-low enable line.
     motion.add(stepDirGroup);
-    for (auto& d : drivers) motion.add(d);
-    for (auto& m : motor) motion.add(m);
-    for (auto& stepper : stepDirMotors) motion.add(stepper);
+    for (int i = 0; i < board::kMotors; ++i) motion.add(drivers[i]);
+    for (int i = 0; i < board::kMotors; ++i) motion.add(motor[i]);
+    for (int i = 0; i < board::kMotors; ++i) motion.add(stepDirMotors[i]);
 
     auto& api = dev.api();
     motophonique::mountTree(
