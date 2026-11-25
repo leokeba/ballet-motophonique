@@ -45,7 +45,7 @@ Pins (Leo, 2026-11-15; confirmed 2026-11-19): SPI SCK GPIO18, MOSI GPIO23, MISO 
 
 Only what is specific to the motors is here; the rest comes from the libraries, pinned in `deps.lock`:
 
-- **TesserKIT**: `Device`, `System` (`/sys/name`), `Network` (Wi-Fi, the access point, mDNS), `Firmware` (uploads, GitHub releases, rollback), `Files` (LittleFS: the settings), `Auth`, `UdpApi` (the API over UDP: the master's way here), `NowTp` (ESP-NOW, off by default: testing, and time later), `Peers` (`/sys/peers`, and when a device is lost), `Log`; TesserAPI's serial transport on the console's UART (the launcher's USB way).
+- **TesserKIT**: `Device`, `System` (`/sys/name`), `Network` (Wi-Fi, the access point, mDNS), `Firmware` (uploads, GitHub releases, rollback), `Files` (LittleFS: the settings), `Auth`, `UdpApi` (the API over UDP: the master's way here), `NowTp` (ESP-NOW, on by default — the primary way Leo configures the boards, 2026-11-25 — testing, and time later), `Peers` (`/sys/peers`, and when a device is lost), `Log`; TesserAPI's serial transport on the console's UART (the launcher's USB way).
 - **TesserMotion**: `Motion` (the control task, 50 Hz); on the board `Tmc5160` on an `SpiBus` plus `StepDirMotor` on RMT, with the TMC5160 strapped for STEP/DIR.
 - **TesserUI**: the interface, and `Views` for the first page.
 
@@ -96,7 +96,7 @@ When the device that last wrote a motor's speed is lost (gone from every transpo
 
 ### 5.4 Timing across controllers *(later)*
 
-Photophonique's DESIGN §5.8 plans how the ensemble plays in time (NowTP's network time, measured first). The motors follow whatever it decides: NowTP is a component of this firmware (off by default), as it is there.
+Photophonique's DESIGN §5.8 plans how the ensemble plays in time (NowTP's network time, measured first). The motors follow whatever it decides: NowTP is a component of this firmware (on by default), as it is there.
 
 ## 6. The tree
 

@@ -78,9 +78,9 @@ extern "C" void app_main() {
     net.txPower(WIFI_TX_POWER);
 #endif
     // The master's writes (docs/DESIGN.md section 5.2): over UDP, handled in
-    // UDP's own task (in TesserKIT's they wait about 10 ms more); NowTP for
-    // testing, off until turned on.
-    espNow.enable(false).maxCalls(10);
+    // UDP's own task (in TesserKIT's they wait about 10 ms more); NowTP on by
+    // default, the primary way Leo configures the boards.
+    espNow.maxCalls(10);
     udp.maxCalls(10).ownTask(true);
     peers.order("udp/ethernet, nowtp");
     // The show's discovery group, as photophonique's: its master mounts only
