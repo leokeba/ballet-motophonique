@@ -92,10 +92,18 @@ set_target_properties(motophonique_tests PROPERTIES CXX_STANDARD 17 CXX_STANDARD
 target_compile_options(motophonique_tests PRIVATE -Wall -Wextra -Werror -fno-exceptions -fno-rtti)
 add_test(NAME motophonique_tests COMMAND motophonique_tests)
 
+# A node serving the same tree over stdin/stdout, for UI checks without a
+# board (DESIGN section 10): TesserUI's web/scripts/device.mjs --exe
+# build/motophonique_demo.
+add_executable(motophonique_demo test/demo_node.cpp)
+target_link_libraries(motophonique_demo PRIVATE motophonique_core tessermotion_testing)
+set_target_properties(motophonique_demo PROPERTIES CXX_STANDARD 17 CXX_STANDARD_REQUIRED ON)
+target_compile_options(motophonique_demo PRIVATE -Wall -Wextra -Werror -fno-exceptions -fno-rtti)
+
 if(MOTOPHONIQUE_SANITIZE)
     # Every library in the binary, so it is instrumented alike.
     foreach(t tesser_core tesserui_core tessermotion_core tessermotion_fake_hw tessermotion_testing
-              motophonique_core motophonique_tests)
+              motophonique_core motophonique_tests motophonique_demo)
         target_compile_options(${t} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer -g)
         target_link_options(${t} PRIVATE -fsanitize=address,undefined)
     endforeach()
