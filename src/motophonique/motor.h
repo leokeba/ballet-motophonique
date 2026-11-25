@@ -7,7 +7,7 @@
 // the driver, waits at standstill, then turns; 0 ramps down to a stop and
 // holds there, the driver enabled at its hold current (Leo, 2026-11-12). The
 // velocity is renewed every tick, so the driver's deadman never stops a
-// turning motor and a master writing the speed needn't renew it. The motor claims its driver: the driver tree's controls are readouts.
+// turning motor and a master writing the speed needn't renew it. The motor claims its drive, and its chip too: their trees' controls are readouts.
 //
 // Added to Motion before its driver, so the velocity it sets reaches the
 // chip in the same tick. Built on Fluante's spinner (fluante-firmware).

@@ -1,7 +1,8 @@
 // The motor (docs/DESIGN.md section 5.1) on TesserMotion's fake TMC2209: the
 // units, booting stopped, the start, the driver's ramp, the deadman, speed
-// changes through 0, stopping and holding, the limit, halts, an absent driver, a chip
-// found turning or coasting at boot.
+// changes through 0, stopping and holding, a hold ending a move, the limit,
+// halts, an absent driver, a chip found turning or coasting at boot, and the
+// step/dir motor claiming its chip.
 #pragma once
 
 #include "rig.h"
@@ -159,6 +160,28 @@ TEST(motor_tree_ping_pongs_across_span_and_stop_cancels_cleanly) {
     CHECK(r.motor.position() > 0);
 }
 
+TEST(motor_hold_stops_a_move_and_holds) {
+    StepDirMotorRig r;
+    CHECK(r.call("/motors/1/move", "{\"degrees\":360,\"maxSpeed\":30,\"acceleration\":60}") ==
+          tesser::Status::Ok);
+    r.tick(3);
+    CHECK(r.output.running());
+    CHECK(r.output.pump(20000) > 0);
+    r.tick(3);
+    CHECK(r.motor.state() == State::Moving);
+
+    CHECK(r.call("/motors/1/hold", "null") == tesser::Status::Ok);
+    for (int i = 0; i < 20 && r.motor.state() != State::Holding; ++i) {
+        r.output.pump(20000);
+        r.tick();
+    }
+    CHECK(r.motor.state() == State::Holding);
+    CHECK(r.motor.positionValid());
+    CHECK(r.motor.position() > 0);
+    CHECK(r.motor.position() < 360);
+    CHECK(r.driver.enabled());  // held at the hold current, not free
+}
+
 TEST(motor_lowering_speed_limit_cancels_ping_pong_safely) {
     StepDirMotorRig r;
     CHECK(r.call("/motors/1/pingPong", "{\"span\":90,\"maxSpeed\":30,\"acceleration\":60}") ==
@@ -212,6 +235,14 @@ TEST(motor_boots_stopped_and_claims_its_driver) {
     CHECK(r.set("/drivers/1/enabled", "true").status == tesser::Status::Busy);
     CHECK(r.set("/drivers/2/velocity", "1000").status == tesser::Status::Busy);
     CHECK(!r.driver[0].enabled());
+}
+
+TEST(step_dir_motor_claims_its_chip) {
+    StepDirMotorRig r;
+    CHECK_EQ(r.driver.owner(), std::string("motor"));
+    CHECK(r.call("/drivers/1/enabled", "true") == tesser::Status::Busy);
+    CHECK(r.call("/drivers/1/velocity", "1000") == tesser::Status::Busy);
+    CHECK(!r.driver.enabled());
 }
 
 TEST(motor_starts_settles_and_ramps) {

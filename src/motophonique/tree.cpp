@@ -81,6 +81,12 @@ void describe(Object& o, Motor& m) {
         .label("Ping-pong")
         .writeAccess(Access::User)
         .doc("Start at the current position and alternate across span degrees until stopped");
+    o.action("hold", [&m] {
+          m.setSpeed(0);
+     })
+        .label("Stop")
+        .writeAccess(Access::User)
+        .doc("To 0: ends a move or ping-pong, ramps down and holds, the driver left on at its hold current");
     o.action("zeroPosition", [&m, &o] {
          if (!m.zeroPosition()) {
              return tesser::Check::fail(
@@ -158,6 +164,15 @@ void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion, c
         auto* motor = static_cast<Object*>(tree.child(kNames[i]));
         if (!motor) continue;
         if (describeMotorDrive) describeMotorDrive(*motor, i);
+        // The motor claims its drive at begin(): the drive's raw controls are
+        // dead here. Hide the ones the tree replaces — stop (Stop does it
+        // through the motor), moveRelative (Move and Ping-pong) and the ramp
+        // (acceleration sets it, every tick) — leaving enabled and velocity
+        // as readouts, disabled by their own claim hints.
+        for (const char* name : {"stop", "moveRelative"}) {
+            if (tesser::Node* node = motor->child(name)) static_cast<tesser::ActionNode*>(node)->ui("visibleWhen", "claimed=false");
+        }
+        if (tesser::Node* ramp = motor->child("ramp")) static_cast<Object*>(ramp)->ui("visibleWhen", "claimed=false");
         tesser::Node* speed = motor->child("speed");
         if (!speed) continue;
         Motor& m = motors.items[i];
@@ -172,7 +187,10 @@ void mountTree(tesser::Api& api, Motors& motors, tessermotion::Motion& motion, c
     }
     auto& drivers = api.object("drivers").label("Motor drivers").ui("icon", "motor").ui("group", "Hardware");
     for (int i = 0; i < motors.count && i < Motors::kMax; i++) {
-        describeDrive(drivers.object(kNames[i]).label(kLabels[i]), i);
+        auto& driver = drivers.object(kNames[i]).label(kLabels[i]);
+        describeDrive(driver, i);
+        // The motor claims the chip at begin(): its ramp is dead here too.
+        driver.object("ramp").ui("visibleWhen", "claimed=false");
     }
     api.mount("motion", motion).label("Control loop").ui("icon", "chart").ui("group", "Hardware");
 }

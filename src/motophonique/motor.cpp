@@ -154,7 +154,10 @@ float Motor::target() const {
     return speed_ > limit ? limit : speed_ < -limit ? -limit : speed_;
 }
 
-void Motor::begin() { drive_.claim(owner_); }
+void Motor::begin() {
+    drive_.claim(owner_);
+    if (chip_) chip_->claim(owner_);
+}
 
 void Motor::update(uint64_t nowUs) {
     if (program_ != Program::None && stepper_) {
